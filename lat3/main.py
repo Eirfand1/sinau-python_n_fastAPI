@@ -1,8 +1,12 @@
-from fastapi import FastAPI, Query, Path
-from enum import Enum
-from typing import Annotated, Literal
+from fastapi import FastAPI, Query, Path, Body, Cookie, Header, Response
+from fastapi.responses import JSONResponse, RedirectResponse
+from typing import Annotated
 import random
-from pydantic import AfterValidator, Field, BaseModel
+from pydantic import AfterValidator
+from model import ModelName, Item, User, FilterParams, Item2, Offer, Image, Item3, Cookies, CommondHeader, Item4, UserIn, UserOut
+from uuid import UUID
+from datetime import datetime, time, timedelta
+
 
 app = FastAPI()
 
@@ -11,7 +15,6 @@ async def root():
     return {
         "message": "Hello World"
     }
-
 
 data = {
     "isbn-9781529046137": "The Hitchhiker's Guide to the Galaxy",
@@ -109,11 +112,6 @@ async def read_users(user_id):
 
 
 """ Menggunakan parameter yang berupa enum """
-class ModelName(str, Enum):
-    alexnet = "alexnet"
-    resnet = "resnet"
-    lenet = "lenet"
-
 @app.get("/models/{model_name}")
 async def get_model(model_name: ModelName):
     if model_name is ModelName.alexnet:
@@ -203,11 +201,7 @@ async def read_user_item(item_id: str, needy: str):
 
 """ pydantic model """
 
-class Item(BaseModel):
-    name: str
-    description: str | None = None
-    price: float
-    tax: float | None = None
+
 
 @app.post("/items-pydantic")
 async def create_item(item: Item):
@@ -220,25 +214,240 @@ async def create_item(item: Item):
 """ Kesimpulan parameter dan path:
     kalo parameter di declare ke path maka akan dianggap path,
     jika tidak maka akan dianggap query parameter
+
+    parameter dengan union Model = None bisa untuk optional
 """
 @app.put("/items-pydantic/{item_id}")
-async def update_item(item_id: int, item: Item, q: str | None = None):
+async def update_item(
+    item_id: Annotated[int, Path(title="ID item", ge=0, le=1000)],
+    item: Item | Item = None,
+    q: str | None = None,
+):
     result = {"item_id": item_id, **item.model_dump()}
     if q is not None:
         result.update({"q": q})
         
     return result
 
+""" Multiple body, perlu item dan user """
+@app.put("/items-update2/{item_id}")
+async def update_item2(
+    *,
+    item_id: int, 
+    item: Item,
+    user: User,
+    importance: Annotated[int, Body()],
+    q: str | None = None
+):
+    result = {
+        "item_id": item_id,
+        "item": item,
+        "user": user,
+        "importance": importance
+    }
+    if q:
+        result.update({"q": q})
+    return result
 
 
-class FilterParams(BaseModel):
-    model_config = {"extra": "forbid"}
+""" Agar body request json expect sebuah key """
+@app.put("/items-update3/{item_id}")
+async def update_item3( 
+    item_id: int,
+    item: Annotated[Item, Body(embed=True)]
+):
+    result =  {
+        "item_id": item_id,
+        "item": item
+    }
+    return result
 
-    limit: int = Field(100, gt=0, le=100)
-    offset: int = Field(0, ge=0)
-    order_by: Literal["created_at", "updated_at"] = "created_at"
-    tags: list[str] = []
+@app.put("/items-update4/{item_id}")
+async def update_item4(
+    item_id: int,
+    item: Annotated[
+        Item2,
+        Body(
+            examples=[
+                {
+                    "name": "kinderjoy",
+                    "description": "deskripsi produk",
+                    "price": 10000,
+                    "tax": 110
+                },
+                {
+                    "name": "shampo lifeboy",
+                    "price": 20000,
+                },
+                {
+                    "name": "Kahf Facewash",
+                    "price": 50000,
+                }
+            ]
+        )
+    ]
+):
+    result = {
+        "item_id": item_id,
+        "item": item
+    }
+    return result
+
+
+@app.put("/items-update6/{item_id}")
+async def update_item6(
+    item_id: int,
+    item: Annotated[
+        Item2,
+        Body(
+           openapi_examples={
+               "normal": {
+                   "summary": "Contoh normal",
+                   "description": "Normal item yang akan work",
+                   "value": {
+                       "name": "sebuah item",
+                       "description": "Sebuah Item",
+                       "price": 50000,
+                       "tax": 550
+                   },
+               },
+               "converted" : {
+                   "summary": "contoh untuk konversi string ke int otomatis",
+                   "description": "FastApi bisa convert dari string ke int secara otomatis",
+                   "value": {
+                       "name": "sebuah item2",
+                       "price": "70000"
+                   },
+               },
+               "invalid": {
+                   "summary": "sebuah item yang tidak sah",
+                   "value": {
+                       "name": "sebuah item3",
+                       "price": "sepuluh ribu"
+                   }
+               }
+           }
+        )
+    ]
+):
+    result = {
+        "item_id": item_id,
+        "item": item
+    }
+    return result
+
+
+
+@app.post("/offers/")
+async def create_offer(offer: Offer):
+    return offer
 
 @app.get("/quer-param-pydantic")
 async def quer_param_pydantic(filter_query: Annotated[FilterParams, Query()]):
     return filter_query
+
+""" Body of pure list """
+@app.post("/image/multiple")
+async def create_multiple_images(images: list[Image]):
+    return images
+
+@app.post("/index-weight")
+async def create_index_weights(weights: dict[int, float]):
+    return weights
+
+@app.put("/items5/{item_id}")
+async def update_item5(item_id: int, item: Item3):
+    results = {
+        "item_id": item_id,
+        "item": item
+    }
+    return results
+
+@app.put("/extra-datatype")
+async def extra_datatype(
+    item_id: UUID,
+    start_datetime: Annotated[datetime, Body()],
+    end_datetime: Annotated[datetime, Body()],
+    process_after: Annotated[timedelta, Body()],
+    repeat_at: Annotated[time | None, Body()] = None
+):
+    start_process = start_datetime + process_after
+    duration = end_datetime - start_process
+    return {
+        "item_id": item_id,
+        "start_datetime": start_datetime,
+        "end_datetime": end_datetime,
+        "process_after": process_after,
+        "repeat_at": repeat_at,
+        "start_process": start_process,
+        "duration": duration
+    }
+
+
+""" cookies parameter """
+@app.get("/cookie-param")
+async def cookie_param(ads_id: Annotated[str | None, Cookie()] = None):
+    return {
+        "ads_id": ads_id
+    }
+
+""" Header param """
+@app.get("/header-param")
+async def header_param(user_agent: Annotated[str | None, Header()] = None):
+    return {
+        "User-Agent": user_agent
+    }
+
+@app.get("/strage-header")
+async def strange_items(
+    strange_header: Annotated[str | None, Header(convert_underscores=False)] = None,
+):
+    return {
+        "Authorization": strange_header
+    }
+
+@app.get("/duplicate-header")
+async def duplicate_header(x_token: Annotated[list[str] | None, Header()] = None):
+    return {
+        "X-Token values": x_token
+    }
+
+""" Cookie param model """
+@app.get("/cookie-param-model")
+async def cookie_param_model(cookies: Annotated[Cookies, Cookie()]):
+    return cookies
+
+""" Header param model """
+@app.get("/header-param-model")
+async def header_param_model(header: Annotated[CommondHeader, Header()]):
+    return header
+
+
+""" Response dengan kembalian model tipe """
+@app.get("/response-model")
+async def response_model() -> list[Item4]:
+    return [
+        Item4(name="Dor dor ajaib", price=1000000),
+        Item4(name="Plumbus", price=2000000)
+    ]
+
+""" atau bisa juga gini """
+
+@app.get("/response-model2", response_model=list[Item4])
+async def response_model2() -> any:
+    return [
+        Item4(name="Dor dor ajaib", price=1000000),
+        Item4(name="Plumbus", price=2000000)
+    ]
+
+""" request tetap menggunakan model userin tetapi response menggunakan user out """
+@app.post("/user2", response_model=UserOut)
+async def create_user2(user: UserIn) -> any:
+    return user
+
+""" Returning response directly """
+@app.get("/portal")
+async def get_portal(teleport: bool = False) -> Response:
+    if teleport:
+        return RedirectResponse(url="https://www.youtube.com")
+    return JSONResponse(content={"message": "Redirect ke url youtube"})
