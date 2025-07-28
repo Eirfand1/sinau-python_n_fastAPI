@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 import schemas
 import crud
 from database import get_db
+from typing import Optional
 
 router = APIRouter()
 
@@ -11,10 +12,14 @@ def create_mahasiswa(mhs: schemas.MahasiswaCreate, db: Session = Depends(get_db)
     mahasiswa = crud.create_mahasiswa(db, mhs)
     return schemas.WebResponse(success=True, data=mahasiswa)
 
-@router.get("/", response_model=schemas.WebResponse[list[schemas.MahasiswaOut]])
-def list_mahasiswa(db: Session = Depends(get_db)):
-    mahasiswa = crud.get_mahasiswa_all(db)
-    return schemas.WebResponse(success=True, data=mahasiswa)
+@router.get("/", response_model=schemas.PaginateWebResponse[list[schemas.MahasiswaOut]])
+def list_mahasiswa(
+    db: Session = Depends(get_db),
+    skip: Optional[int] = 0,
+    limit: Optional[int] = 10
+):
+    mahasiswa = crud.get_mahasiswa_all(db,skip, limit)
+    return schemas.PaginateWebResponse(success=True, data=mahasiswa, skip=skip, limit=limit)
 
 @router.get("/{id}", response_model=schemas.WebResponse[schemas.MahasiswaOut])
 def find_mahasiswa(db: Session = Depends(get_db), id: int = id):
